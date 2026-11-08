@@ -17,19 +17,21 @@ class Collector:
   host=self.host.collect();gpu=self.gpu.collect();eps=[];seen=set();timeout=self.cfg["collector"]["request_timeout_ms"]/1000;limit=self.cfg["collector"]["max_response_bytes"];http=lambda u:get(u,timeout,limit)
   for e in self.cfg["endpoints"]:
    if not e.get("enabled",True):continue
-   base=e["url"].rstrip("/");p=urlsplit(base);proc=listener_process(p.hostname,p.port or (443 if p.scheme=="https" else 80)) if p.hostname in ("127.0.0.1","localhost","::1") else None
-   selected=e.get("engine","auto");adapter=None;proof={}
+   base=e["url"].rstrip("/");p=urlsplit(base);proc=listener_process(p.hostname,p.port or (443 if p.scheme=="https" else 80));selected=e.get("engine","auto");adapter=None;proof={}
    for a in self.adapters:
     if selected not in ("auto",a.engine):continue
     ok,ev=a.identify(base,http);proof[a.engine]=ev
     if ok:adapter=a;break
    if not adapter:
-    eps.append({"endpoint_id":e["id"],"url":base,"state":"unknown_engine","engine":None,"process":proc,"detection":{"evidence":proof},"metrics":[],"error":"No validated engine fingerprint matched"});continue
-   identity=(str(proc["pid"])+":"+str(proc["start_time"])) if proc else "remote:"+base;sig=identity+":"+adapter.engine
+    unavailable=bool(proof) and all(x.get("metrics_status") is None and x.get("health_status") is None for x in proof.values())
+    eps.append({"endpoint_id":e["id"],"url":base,"state":"unavailable" if unavailable else "unknown_engine","engine":None,"process":proc,"detection":{"evidence":proof},"metrics":[],"error":"Endpoint unreachable" if unavailable else "No validated engine fingerprint matched"});continue
+   identity=(str(proc["pid"])+":"+str(proc["start_time"])) if proc else "local-unidentified:"+base;sig=identity+":"+adapter.engine
    if e["id"] not in self.sessions or self.sessions[e["id"]]["signature"]!=sig:self.sessions[e["id"]]={"signature":sig,"session_id":"session-"+uuid.uuid4().hex[:12]}
    if identity in seen:result={"metrics":[],"details":{"deduplicated":True},"diagnostics":{}}
    else:result=adapter.collect(base,http);seen.add(identity)
-   eps.append({"endpoint_id":e["id"],"url":base,"state":"connected","engine":adapter.engine,"process":proc,"session_id":self.sessions[e["id"]]["session_id"],"detection":{"mode":"manual" if selected!="auto" else "automatic","evidence":proof},"metrics":result.get("metrics",[]),"details":result.get("details",{}),"diagnostics":result.get("diagnostics",{})})
+   diagnostics=result.get("diagnostics",{});states=[v.get("state") for v in diagnostics.values()]
+   endpoint_state="unavailable" if states and all(x in ("unreachable","http_error") for x in states) else "connected"
+   eps.append({"endpoint_id":e["id"],"url":base,"state":endpoint_state,"engine":adapter.engine,"process":proc,"session_id":self.sessions[e["id"]]["session_id"],"detection":{"mode":"manual" if selected!="auto" else "automatic","evidence":proof},"metrics":result.get("metrics",[]),"diagnostics":diagnostics})
   self.last={"schema_version":1,"cycle_id":uuid.uuid4().hex,"observed_at":now(),"host_sample_id":uuid.uuid4().hex,"host":host,"gpu_devices":gpu.get("devices",[]),"gpu_provider":{"state":gpu["state"],"error":gpu.get("error")},"endpoints":eps,"plugins":self.registry.diagnostics()}
   if self.hist:self.hist.append(self.last)
  def run(self):

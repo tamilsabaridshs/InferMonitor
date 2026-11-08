@@ -42,13 +42,13 @@ class LinuxProvider:
    cpu=next(x for x in (PROC/"stat").read_text().splitlines() if x.startswith("cpu ")).split()[1:];vals=list(map(int,cpu));idle=vals[3]+(vals[4] if len(vals)>4 else 0);total=sum(vals)
    if self.prev:
     dt=total-self.prev[0];di=idle-self.prev[1]
-    if dt>0:metrics.append({"name":"cpu.utilization","value":round(100*(dt-di)/dt,2),"unit":"%","source":"procfs","scope":"host"})
+    if dt>0:metrics.append({"name":"cpu.utilization","value":round(100*(dt-di)/dt,2),"unit":"%","source":"procfs","scope":"host","semantics":"whole-host delta"})
    self.prev=(total,idle);mem={}
    for x in (PROC/"meminfo").read_text().splitlines():
     k,v=x.split(":",1);mem[k]=int(v.split()[0])*1024
    for n,v in (("memory.total",mem.get("MemTotal")),("memory.available",mem.get("MemAvailable"))):
     if v is not None:metrics.append({"name":n,"value":v,"unit":"bytes","source":"procfs","scope":"host"})
-   if "MemTotal" in mem and "MemAvailable" in mem:metrics.append({"name":"memory.used","value":mem["MemTotal"]-mem["MemAvailable"],"unit":"bytes","source":"procfs","scope":"host"})
+   if "MemTotal" in mem and "MemAvailable" in mem:metrics.append({"name":"memory.used","value":mem["MemTotal"]-mem["MemAvailable"],"unit":"bytes","source":"procfs","scope":"host","semantics":"MemTotal - MemAvailable"})
    disk={}
    for x in (PROC/"diskstats").read_text().splitlines():
     c=x.split()
@@ -64,29 +64,55 @@ class LinuxProvider:
   except Exception as e:return {"provider_id":self.id,"state":"DEGRADED","metrics":metrics,"error":str(e)}
 class AmdRocmProvider:
  id="gpu.amd.rocm_smi"
+ def _run_json(self,cmd,args):
+  p=subprocess.run([cmd,*args],capture_output=True,text=True,timeout=2)
+  if p.returncode:raise RuntimeError(p.stderr[:250] or "AMD SMI command failed")
+  return json.loads(p.stdout)
+ def _leaf_metrics(self,obj,prefix=""):
+  out=[]
+  if isinstance(obj,dict):
+   if "value" in obj and "unit" in obj and isinstance(obj["value"],(int,float)):
+    out.append((prefix,obj["value"],str(obj["unit"])))
+   else:
+    for k,v in obj.items():out.extend(self._leaf_metrics(v,(prefix+"."+k if prefix else k).lower()))
+  elif isinstance(obj,(int,float)) and not isinstance(obj,bool):out.append((prefix,obj,None))
+  return out
  def collect(self):
-  cmd=shutil.which("amd-smi") or shutil.which("rocm-smi")
+  cmd=shutil.which("amd-smi")
+  if cmd:
+   try:
+    metrics=self._run_json(cmd,["metric","--json"])
+    try:inventory=self._run_json(cmd,["list","--json"])
+    except Exception:inventory=[]
+    if not isinstance(metrics,list):metrics=metrics.get("gpu_data",[]) if isinstance(metrics,dict) else []
+    if not isinstance(inventory,list):inventory=inventory.get("gpu_data",[]) if isinstance(inventory,dict) else []
+    inventory_by_gpu={str(x.get("gpu")):x for x in inventory if isinstance(x,dict)}
+    devices=[]
+    for row in metrics:
+     if not isinstance(row,dict):continue
+     idx=str(row.get("gpu","?"));static=inventory_by_gpu.get(idx,{})
+     dev_metrics=[]
+     for section,value in row.items():
+      if section=="gpu":continue
+      for field,val,unit in self._leaf_metrics(value,section):
+       name=field.lower()
+       canonical={"usage.gfx_activity":"gpu.utilization","power.socket_power":"gpu.power","temperature.hotspot":"gpu.temperature.hotspot","temperature.edge":"gpu.temperature.edge","mem_usage.used_vram":"gpu.memory.used","mem_usage.total_vram":"gpu.memory.total"}.get(name)
+       if canonical:
+        v=val;u=unit
+        if canonical.startswith("gpu.memory.") and unit:
+         if unit.lower() in ("mb","mib"):v=val*1048576;u="bytes"
+         elif unit.lower() in ("gb","gib"):v=val*1073741824;u="bytes"
+        dev_metrics.append({"name":canonical,"value":v,"unit":u,"scope":"gpu","source":"amd-smi.metric","availability":"available","semantics":"AMD SMI field "+field})
+       dev_metrics.append({"name":"amd_smi."+field,"value":val,"unit":unit,"scope":"gpu","source":"amd-smi.metric","availability":"available","semantics":"raw AMD SMI metric"})
+     bdf=static.get("bdf") or static.get("pci_bdf");uuid=static.get("uuid")
+     devices.append({"device_id":str(uuid or bdf or "amd-index-"+idx),"identity_strength":"strong" if uuid or bdf else "weak","vendor":"amd","provider_id":self.id,"metrics":dev_metrics})
+    return {"provider_id":self.id,"state":"ACTIVE" if devices else "DEGRADED","devices":devices,"error":None if devices else "amd-smi returned no GPU metrics"}
+   except Exception as e:return {"provider_id":self.id,"state":"DEGRADED","devices":[],"error":str(e)}
+  cmd=shutil.which("rocm-smi")
   if not cmd:return {"provider_id":self.id,"state":"DEGRADED","devices":[],"error":"amd-smi/rocm-smi not installed"}
-  args=["metric","--json"] if cmd.endswith("amd-smi") else ["--json"]
   try:
-   p=subprocess.run([cmd,*args],capture_output=True,text=True,timeout=2)
-   if p.returncode:raise RuntimeError(p.stderr[:250])
-   raw=json.loads(p.stdout)
-   if isinstance(raw,list):devs=raw
-   elif isinstance(raw,dict):
-    devs=raw.get("gpu",raw.get("GPUs",raw.get("devices")))
-    if devs is None:devs=[v for k,v in raw.items() if isinstance(v,dict) and (k.lower().startswith("card") or "gpu" in k.lower())]
-   else:devs=[]
+   raw=self._run_json(cmd,["--json"]);devs=raw if isinstance(raw,list) else raw.get("card",raw.get("gpu",[])) if isinstance(raw,dict) else []
    if isinstance(devs,dict):devs=list(devs.values())
-   out=[]
-   for i,d in enumerate(devs if isinstance(devs,list) else []):
-    if not isinstance(d,dict):continue
-    flat={}
-    def walk(x,k=""):
-     if isinstance(x,dict):
-      for a,b in x.items():walk(b,(k+"."+a).lower())
-     elif isinstance(x,(int,float)) and not isinstance(x,bool):flat[k]=x
-    walk(d)
-    out.append({"device_id":str(d.get("uuid") or d.get("bdf") or d.get("pci_bus") or "amd-index-"+str(i)),"vendor":"amd","provider_id":self.id,"raw_numeric_fields":flat,"metrics":[]})
-   return {"provider_id":self.id,"state":"ACTIVE" if out else "DEGRADED","devices":out,"error":None if out else "No AMD device records parsed; field mapping awaits version-labelled fixture"}
+   devices=[{"device_id":"rocm-smi-index-"+str(i),"identity_strength":"weak","vendor":"amd","provider_id":self.id,"metrics":[],"raw_numeric_fields":{k:v for k,v in d.items() if isinstance(v,(int,float))}} for i,d in enumerate(devs) if isinstance(d,dict)]
+   return {"provider_id":self.id,"state":"ACTIVE" if devices else "DEGRADED","devices":devices,"error":None if devices else "No legacy ROCm SMI device records parsed"}
   except Exception as e:return {"provider_id":self.id,"state":"DEGRADED","devices":[],"error":str(e)}

@@ -1,32 +1,25 @@
 # MVP implementation notes
 
-## Initial host target
+## Target profile
+Native Ubuntu 26.04.1 on Ryzen 7 9700X and Radeon RX 9070 16 GB (gfx1201), ROCm/HIP. This is the intended test matrix, not a claim that this GitHub editing environment ran on that PC.
 
-The first runnable slice targets native Ubuntu/Linux on the Ryzen 7 9700X and Radeon RX 9070 16 GB (gfx1201) with ROCm/HIP. This is a target profile, not a claim that this connector environment has tested the user's workstation.
+## Current implementation
+- Python 3.11+ standard-library companion, in-process allow-listed plugin registry.
+- Linux procfs CPU/RAM/disk throughput, local TCP listener-to-process lookup, PID plus process start time.
+- AMD SMI integration: runs amd-smi metric --json and amd-smi list --json; maps fields only when their source name/unit is recognised; retains unknown values with source names.
+- PolyStrata JSON health/metrics adapter: /health, /props, /metrics, optional /metrics/prometheus.
+- llama.cpp Prometheus /metrics adapter.
+- Up to three local endpoints, same-port process/engine sessions, JSONL persistence and local dashboard/API.
 
-## Implemented components
+## Compatibility and evidence boundaries
+- The user's supplied Strata notes report /health, /props, /metrics and /metrics/prometheus, plus fields such as engine.version, max_context, expert_cache_mib, arena_mib, vram_free_mib, request decode_tok_s, prompt_read, prompt_ms, hit_rate, pcie_share and drafts counters. The adapter retains numeric leaves with original dotted paths; units and semantics are not guessed.
+- llama.cpp metrics are parsed from the Prometheus exposition. Source names, labels and numeric values remain intact; the adapter does not calculate counter rates or claim slot/context metrics without a fixture.
+- AMD SMI JSON schema differs across ROCm releases. The provider reads AMD SMI field values and explicit units when present; unrecognised fields remain source-labelled. Validate on the installed ROCm 7.16/HIP setup.
+- Process-to-socket ownership may require permissions. If PID/start time cannot be established, identity is not considered strong.
+- JSONL retention pruning occurs at startup; automatic online rotation and crash-safe compaction are follow-up work.
 
-- Python 3.11+ standard-library companion; no mandatory third-party runtime package.
-- Small allow-listed plugin registry with lifecycle state and diagnostics.
-- Linux procfs host CPU/RAM and disk throughput sampling; local TCP listener-to-process mapping; process start-time identity.
-- AMD SMI command discovery and bounded JSON invocation. Raw device payload is retained because CLI schemas and units vary by ROCm release; canonical VRAM/temperature/power mapping is deliberately deferred until fixtures from the installed version are captured.
-- PolyStrata/Strata JSON health and metrics adapter: /health, /props, /metrics, optional /metrics/prometheus.
-- llama.cpp Prometheus /metrics adapter. Raw metric names, labels and values are retained.
-- Three endpoint slots, session IDs, duplicate-process sampling avoidance, JSONL persistence and local dashboard/API.
+## Security
+Loopback API and inference URLs only; no URL credentials; bounded read-only GET requests; no prompts/completions, remote telemetry, inference control, or arbitrary plugin loading.
 
-## Important limitations before P0 completion
-
-1. AMD SMI field mapping: capture amd-smi metric --json or rocm-smi --json from the target host, version-label it, then map utilization, VRAM, temperature and power with correct units. Until then GPU devices may be listed with raw payload only.
-2. PolyStrata: adapter recognizes JSON signatures and preserves numeric leaves. It does not claim every field is semantically normalized. Add sanitized live fixtures from the installed strata-poly build. Supplied handoff observed /health, /props, /metrics and /metrics/prometheus; engine version 0.1.45 was observed.
-3. llama.cpp: parser preserves exposition values. Counter rates and gauge semantics need fixtures from the exact llama.cpp build before derived rates are shown.
-4. Process identity: procfs socket ownership may require additional privileges or may be hidden by namespaces/hardening. Weak/unknown identity is reported as such; PID-only strong identity is not fabricated.
-5. History retention: JSONL append/query is implemented; automatic pruning/rotation and crash-safe compaction remain follow-up work.
-6. Run the acceptance matrix on Ubuntu 26.04.1/kernel 7.0.0-38, ROCm 7.16/HIP, RX 9070 gfx1201, PolyStrata and llama.cpp before claiming hardware compatibility.
-
-## Architecture rationale
-
-The BRD/PRD prioritise Python standard library, local HTTP, plain HTML, JSONL and minimal dependencies. The registry uses Cordis ideas only for deterministic registration, lifecycle, capability boundaries and diagnostics. It is not a Cordis dependency or a general plugin marketplace.
-
-## Run and test
-
-See README. The companion binds to loopback and makes bounded GET-only requests to configured endpoints. It never stores prompts or completions.
+## Test gate
+Run python -m unittest discover -s tests -v, then verify real integrations on Ubuntu 26.04.1/kernel 7.0.0-38, ROCm 7.16/HIP, RX 9070 gfx1201, the currently installed PolyStrata build and the user's llama.cpp build. Do not declare supported until these tests pass.
