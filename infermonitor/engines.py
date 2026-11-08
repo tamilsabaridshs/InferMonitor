@@ -1,8 +1,11 @@
 import json,re,urllib.request,urllib.error
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+ def redirect_request(self,req,fp,code,msg,headers,newurl):return None
+_NO_REDIRECT=urllib.request.build_opener(_NoRedirect)
 def get(url,timeout,limit):
  try:
   req=urllib.request.Request(url,headers={"User-Agent":"InferMonitor/0.1","Accept":"application/json,text/plain,*/*"})
-  with urllib.request.urlopen(req,timeout=timeout) as r:
+  with _NO_REDIRECT.open(req,timeout=timeout) as r:
    b=r.read(limit+1)
    if len(b)>limit:return "too_large",None,r.status
    return "ok",b.decode("utf-8","replace"),r.status
