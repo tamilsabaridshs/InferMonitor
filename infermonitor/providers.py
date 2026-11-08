@@ -98,11 +98,8 @@ class AmdRocmProvider:
        name=field.lower()
        canonical={"usage.gfx_activity":"gpu.utilization","power.socket_power":"gpu.power","temperature.hotspot":"gpu.temperature.hotspot","temperature.edge":"gpu.temperature.edge","mem_usage.used_vram":"gpu.memory.used","mem_usage.total_vram":"gpu.memory.total"}.get(name)
        if canonical:
-        v=val;u=unit
-        if canonical.startswith("gpu.memory.") and unit:
-         if unit.lower() in ("mb","mib"):v=val*1048576;u="bytes"
-         elif unit.lower() in ("gb","gib"):v=val*1073741824;u="bytes"
-        dev_metrics.append({"name":canonical,"value":v,"unit":u,"scope":"gpu","source":"amd-smi.metric","availability":"available","semantics":"AMD SMI field "+field})
+        # Preserve the exact AMD SMI unit (for example MB); do not assume MB means MiB.
+        dev_metrics.append({"name":canonical,"value":val,"unit":unit,"scope":"gpu","source":"amd-smi.metric","availability":"available","semantics":"AMD SMI field "+field})
        dev_metrics.append({"name":"amd_smi."+field,"value":val,"unit":unit,"scope":"gpu","source":"amd-smi.metric","availability":"available","semantics":"raw AMD SMI metric"})
      bdf=static.get("bdf") or static.get("pci_bdf");uuid=static.get("uuid")
      devices.append({"device_id":str(uuid or bdf or "amd-index-"+idx),"identity_strength":"strong" if uuid or bdf else "weak","vendor":"amd","provider_id":self.id,"metrics":dev_metrics})
