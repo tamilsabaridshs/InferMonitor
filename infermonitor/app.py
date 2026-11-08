@@ -18,10 +18,13 @@ class Collector:
   for e in self.cfg["endpoints"]:
    if not e.get("enabled",True):continue
    base=e["url"].rstrip("/");p=urlsplit(base);proc=listener_process(p.hostname,p.port or (443 if p.scheme=="https" else 80));selected=e.get("engine","auto");adapter=None;proof={}
-   for a in self.adapters:
-    if selected not in ("auto",a.engine):continue
-    ok,ev=a.identify(base,http);proof[a.engine]=ev
-    if ok:adapter=a;break
+   if selected!="auto":
+    adapter=next((x for x in self.adapters if x.engine==selected),None)
+    proof[selected]={"signature":"explicit user override","mode":"manual"}
+   else:
+    for a in self.adapters:
+     ok,ev=a.identify(base,http);proof[a.engine]=ev
+     if ok:adapter=a;break
    if not adapter:
     unavailable=bool(proof) and all(x.get("metrics_status") is None and x.get("health_status") is None for x in proof.values())
     eps.append({"endpoint_id":e["id"],"url":base,"state":"unavailable" if unavailable else "unknown_engine","engine":None,"process":proc,"detection":{"evidence":proof},"metrics":[],"error":"Endpoint unreachable" if unavailable else "No validated engine fingerprint matched"});continue
