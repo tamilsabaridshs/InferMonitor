@@ -37,7 +37,7 @@ class Collector:
    else:result=adapter.collect(base,http);seen.add(identity)
    diagnostics=result.get("diagnostics",{});states=[v.get("state") for v in diagnostics.values()]
    endpoint_state="unavailable" if states and all(x in ("unreachable","http_error") for x in states) else "connected"
-   eps.append({"endpoint_id":e["id"],"url":base,"state":endpoint_state,"engine":adapter.engine,"process":proc,"session_id":self.sessions[e["id"]]["session_id"],"detection":{"mode":"manual" if selected!="auto" else "automatic","evidence":proof},"metrics":result.get("metrics",[]),"diagnostics":diagnostics})
+   eps.append({"endpoint_id":e["id"],"url":base,"state":endpoint_state,"engine":adapter.engine,"engine_version":proof.get(adapter.engine,{}).get("engine_version"),"process":proc,"session_id":self.sessions[e["id"]]["session_id"],"detection":{"mode":"manual" if selected!="auto" else "automatic","evidence":proof},"metrics":result.get("metrics",[]),"diagnostics":diagnostics})
   host_sample_id=uuid.uuid4().hex
   for endpoint in eps:endpoint["host_sample_id"]=host_sample_id
   self.last={"schema_version":1,"cycle_id":uuid.uuid4().hex,"observed_at":now(),"host_sample_id":host_sample_id,"host":host,"gpu_devices":gpu.get("devices",[]),"gpu_provider":{"state":gpu["state"],"error":gpu.get("error")},"endpoints":eps,"plugins":self.registry.diagnostics()}
