@@ -14,7 +14,10 @@ class Collector:
  def __init__(self,cfg,hist,registry):
   self.cfg,self.hist,self.registry=cfg,hist,registry;self.host=LinuxProvider();self.gpu=AmdRocmProvider();self.adapters=[Adapter("polystrata"),Adapter("llamacpp")];self.sessions={};self.last=None;self.running=False;self.error=None
  def once(self):
-  host=self.host.collect();gpu=self.gpu.collect();eps=[];seen=set();timeout=self.cfg["collector"]["request_timeout_ms"]/1000;limit=self.cfg["collector"]["max_response_bytes"];http=lambda u:get(u,timeout,limit)
+  host=self.host.collect();gpu=self.gpu.collect();eps=[];seen=set();timeout=self.cfg["collector"]["request_timeout_ms"]/1000;limit=self.cfg["collector"]["max_response_bytes"];probe_cache={}
+  def http(url):
+   if url not in probe_cache:probe_cache[url]=get(url,timeout,limit)
+   return probe_cache[url]
   for e in self.cfg["endpoints"]:
    if not e.get("enabled",True):continue
    base=e["url"].rstrip("/");p=urlsplit(base);proc=listener_process(p.hostname,p.port or (443 if p.scheme=="https" else 80));selected=e.get("engine","auto");adapter=None;proof={}
