@@ -138,7 +138,23 @@ The scheduler samples one selected provider per device/capability set per cycle.
 - One metric parser failure: isolate that metric where possible; do not discard unrelated devices.
 - Provider shutdown: release native handles.
 
-## 10. Acceptance tests
+
+## 11. Memory attribution requirements
+
+| ID | Requirement | Reason |
+|---|---|---|
+| REQ-MEM-01 | Physical VRAM used/total is reported as device-scope telemetry. | Establish actual device capacity and occupancy. |
+| REQ-MEM-02 | Process-attributed GPU memory is separate from device-wide memory. | Per-process accounting may be incomplete and is not equivalent to device totals. |
+| REQ-MEM-03 | Engine KV cache, expert cache and arena metrics retain engine/runtime scope. | These are internal allocations and may overlap physical VRAM. |
+| REQ-MEM-04 | Pinned host memory is distinct from device memory and process RSS. | Avoid mixing host and device allocations. |
+| REQ-MEM-05 | RSS, mmap pages and OS page cache remain separately labelled. | OS memory accounting categories can overlap. |
+| REQ-MEM-06 | Every memory metric records source, scope, unit and semantic description. | Users need to understand what a measurement actually represents. |
+| REQ-MEM-07 | No memory categories are summed unless the source guarantees disjoint accounting. | Prevent double-counting. |
+| REQ-MEM-08 | Missing process attribution is reported as unavailable/unsupported, not inferred. | Avoid false precision. |
+
+These requirements extend the original memory-attribution requirements. They do not change the rule that physical device memory and engine-internal metrics remain separate.
+
+## 12. Acceptance tests
 
 - Device identity remains stable when enumeration order changes, where stable OS/vendor identity exists.
 - Two GPUs are represented independently.
