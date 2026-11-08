@@ -57,6 +57,11 @@ class Adapter:
      elif isinstance(x,(int,float)) and not isinstance(x,bool):
       result["metrics"].append({"name":key,"value":x,"unit":None,"scope":"engine","source":"polystrata.json","availability":"available","semantics":"raw engine field; no unit inferred"})
     walk(d,path)
+    # The supplied Strata telemetry notes define prompt-read tok/s as prompt_read / prompt_ms.
+    if path=="/metrics" and isinstance(d.get("requests"),list):
+     for i,request in enumerate(d["requests"]):
+      if isinstance(request,dict) and isinstance(request.get("prompt_read"),(int,float)) and isinstance(request.get("prompt_ms"),(int,float)) and request["prompt_ms"]>0:
+       result["metrics"].append({"name":"polystrata.request.prompt_read_tokens_per_second","value":request["prompt_read"]*1000/request["prompt_ms"],"unit":"tokens/s","scope":"request","source":"polystrata.json","availability":"available","semantics":"prompt_read / prompt_ms; request index "+str(i)})
   state,body,status=http(base+"/metrics/prometheus")
   if state=="ok" and body and "# TYPE" in body:result["metrics"]+=parse_prom(body,"polystrata.prometheus")
   return result
