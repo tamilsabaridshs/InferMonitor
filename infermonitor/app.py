@@ -44,7 +44,10 @@ class Collector:
   host_sample_id=uuid.uuid4().hex
   for endpoint in eps:endpoint["host_sample_id"]=host_sample_id
   self.last={"schema_version":1,"cycle_id":uuid.uuid4().hex,"observed_at":now(),"host_sample_id":host_sample_id,"host":host,"system":self.system_snapshot,"memory":memory,"gpu_devices":gpu.get("devices",[]),"gpu_processes":gpu_processes,"gpu_provider":{"state":gpu["state"],"error":gpu.get("error")},"endpoints":eps,"plugins":self.registry.diagnostics()}
-  if self.hist:self.hist.append(self.last)
+  if self.hist:
+   history_item={k:v for k,v in self.last.items() if k not in ("system","memory","gpu_processes")}
+   history_item["memory"]={"state":memory["state"],"fields":memory["fields"]}
+   self.hist.append(history_item)
  def run(self):
   self.running=True;interval=self.cfg["collector"]["poll_interval_ms"]/1000
   while self.running:
