@@ -35,9 +35,10 @@ class Adapter:
    hs,hb,hstatus=http(base+"/health")
    try:h=json.loads(hb) if hb else {}
    except ValueError:h={}
-   ok=isinstance(d,dict) and (("engine" in d and isinstance(d["engine"],dict) and "version" in d["engine"]) or any(k in d for k in ("hardware_static","requests","max_context","expert_cache_mib")))
+   version=d.get("engine",{}).get("version") if isinstance(d,dict) and isinstance(d.get("engine"),dict) else None
+   ok=isinstance(d,dict) and (version is not None or any(k in d for k in ("hardware_static","requests","max_context","expert_cache_mib")))
    ok=ok or (isinstance(h,dict) and ("max_context" in h or ("loaded" in h and "model" in h)))
-   return ok,{"metrics_status":status,"health_status":hstatus,"signature":"PolyStrata JSON metrics/health" if ok else None}
+   return ok,{"metrics_status":status,"health_status":hstatus,"engine_version":version,"signature":"PolyStrata JSON metrics/health" if ok else None}
   state,body,status=http(base+"/metrics")
   if state=="ok" and ("llamacpp:" in body or ("# TYPE" in body and "llama_" in body)):return True,{"metrics_status":status,"signature":"llama.cpp Prometheus exposition"}
   return False,{"metrics_status":status}

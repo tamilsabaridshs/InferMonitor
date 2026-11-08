@@ -38,7 +38,9 @@ class Collector:
    diagnostics=result.get("diagnostics",{});states=[v.get("state") for v in diagnostics.values()]
    endpoint_state="unavailable" if states and all(x in ("unreachable","http_error") for x in states) else "connected"
    eps.append({"endpoint_id":e["id"],"url":base,"state":endpoint_state,"engine":adapter.engine,"process":proc,"session_id":self.sessions[e["id"]]["session_id"],"detection":{"mode":"manual" if selected!="auto" else "automatic","evidence":proof},"metrics":result.get("metrics",[]),"diagnostics":diagnostics})
-  self.last={"schema_version":1,"cycle_id":uuid.uuid4().hex,"observed_at":now(),"host_sample_id":uuid.uuid4().hex,"host":host,"gpu_devices":gpu.get("devices",[]),"gpu_provider":{"state":gpu["state"],"error":gpu.get("error")},"endpoints":eps,"plugins":self.registry.diagnostics()}
+  host_sample_id=uuid.uuid4().hex
+  for endpoint in eps:endpoint["host_sample_id"]=host_sample_id
+  self.last={"schema_version":1,"cycle_id":uuid.uuid4().hex,"observed_at":now(),"host_sample_id":host_sample_id,"host":host,"gpu_devices":gpu.get("devices",[]),"gpu_provider":{"state":gpu["state"],"error":gpu.get("error")},"endpoints":eps,"plugins":self.registry.diagnostics()}
   if self.hist:self.hist.append(self.last)
  def run(self):
   self.running=True;interval=self.cfg["collector"]["poll_interval_ms"]/1000
