@@ -102,7 +102,8 @@ class AmdRocmProvider:
         dev_metrics.append({"name":canonical,"value":val,"unit":unit,"scope":"gpu","source":"amd-smi.metric","availability":"available","semantics":"AMD SMI field "+field})
        dev_metrics.append({"name":"amd_smi."+field,"value":val,"unit":unit,"scope":"gpu","source":"amd-smi.metric","availability":"available","semantics":"raw AMD SMI metric"})
      bdf=static.get("bdf") or static.get("pci_bdf");uuid=static.get("uuid")
-     devices.append({"device_id":str(uuid or bdf or "amd-index-"+idx),"identity_strength":"strong" if uuid or bdf else "weak","vendor":"amd","provider_id":self.id,"metrics":dev_metrics})
+     model=static.get("name") or static.get("market_name") or static.get("product_name")
+     devices.append({"device_id":str(uuid or bdf or "amd-index-"+idx),"identity_strength":"strong" if uuid or bdf else "weak","vendor":"amd","model":model,"bdf":bdf,"uuid":uuid,"provider_id":self.id,"metrics":dev_metrics})
     return {"provider_id":self.id,"state":"ACTIVE" if devices else "DEGRADED","devices":devices,"error":None if devices else "amd-smi returned no GPU metrics"}
    except Exception as e:return {"provider_id":self.id,"state":"DEGRADED","devices":[],"error":str(e)}
   cmd=shutil.which("rocm-smi")

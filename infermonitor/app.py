@@ -5,6 +5,7 @@ from urllib.parse import urlsplit,urlparse,parse_qs
 from pathlib import Path
 from .config import load_config
 from .providers import LinuxProvider,AmdRocmProvider,listener_process
+from .system import SystemInventoryProvider,LinuxMemoryProvider,AmdRocmProcessProvider
 from .plugins import Plugin,Registry
 from .engines import Adapter,get
 from .history import History
@@ -12,9 +13,11 @@ from . import __version__
 def now():return datetime.now(timezone.utc).isoformat()
 class Collector:
  def __init__(self,cfg,hist,registry):
-  self.cfg,self.hist,self.registry=cfg,hist,registry;self.host=LinuxProvider();self.gpu=AmdRocmProvider();self.adapters=[Adapter("polystrata"),Adapter("llamacpp")];self.sessions={};self.last=None;self.running=False;self.error=None
+  self.cfg,self.hist,self.registry=cfg,hist,registry;self.host=LinuxProvider();self.gpu=AmdRocmProvider();self.system=SystemInventoryProvider();self.memory=LinuxMemoryProvider();self.gpu_processes=AmdRocmProcessProvider();self.system_snapshot=None;self.system_at=0.0;self.adapters=[Adapter("polystrata"),Adapter("llamacpp")];self.sessions={};self.last=None;self.running=False;self.error=None
  def once(self):
-  host=self.host.collect();gpu=self.gpu.collect();eps=[];seen=set();timeout=self.cfg["collector"]["request_timeout_ms"]/1000;limit=self.cfg["collector"]["max_response_bytes"];probe_cache={}
+  host=self.host.collect();gpu=self.gpu.collect();memory=self.memory.collect();gpu_processes=self.gpu_processes.collect();
+  if self.system_snapshot is None or time.monotonic()-self.system_at>=30:self.system_snapshot=self.system.collect();self.system_at=time.monotonic()
+  eps=[];seen=set();timeout=self.cfg["collector"]["request_timeout_ms"]/1000;limit=self.cfg["collector"]["max_response_bytes"];probe_cache={}
   def http(url):
    if url not in probe_cache:probe_cache[url]=get(url,timeout,limit)
    return probe_cache[url]
@@ -40,7 +43,7 @@ class Collector:
    eps.append({"endpoint_id":e["id"],"url":base,"state":endpoint_state,"engine":adapter.engine,"engine_version":proof.get(adapter.engine,{}).get("engine_version"),"process":proc,"session_id":self.sessions[e["id"]]["session_id"],"detection":{"mode":"manual" if selected!="auto" else "automatic","evidence":proof},"metrics":result.get("metrics",[]),"diagnostics":diagnostics})
   host_sample_id=uuid.uuid4().hex
   for endpoint in eps:endpoint["host_sample_id"]=host_sample_id
-  self.last={"schema_version":1,"cycle_id":uuid.uuid4().hex,"observed_at":now(),"host_sample_id":host_sample_id,"host":host,"gpu_devices":gpu.get("devices",[]),"gpu_provider":{"state":gpu["state"],"error":gpu.get("error")},"endpoints":eps,"plugins":self.registry.diagnostics()}
+  self.last={"schema_version":1,"cycle_id":uuid.uuid4().hex,"observed_at":now(),"host_sample_id":host_sample_id,"host":host,"system":self.system_snapshot,"memory":memory,"gpu_devices":gpu.get("devices",[]),"gpu_processes":gpu_processes,"gpu_provider":{"state":gpu["state"],"error":gpu.get("error")},"endpoints":eps,"plugins":self.registry.diagnostics()}
   if self.hist:self.hist.append(self.last)
  def run(self):
   self.running=True;interval=self.cfg["collector"]["poll_interval_ms"]/1000

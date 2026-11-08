@@ -22,6 +22,10 @@ Open http://127.0.0.1:8090. Stop with Ctrl+C. Python 3.11+; no third-party runti
 
 Copy the example configuration and enable ports 8081/8082 as needed. Auto-detection is preferred; manual engine override is available. Unknown services remain Unknown.
 
+## System inventory and memory breakdown
+
+Phase 2 adds CPU/platform inventory, storage and network summaries, detailed Linux RAM categories, top-process RSS/PSS, swap, and best-effort AMD SMI per-process VRAM/GTT attribution. Values that cannot be read remain unavailable rather than being reported as zero. See [Phase 2 notes](docs/implementation/PHASE2-SYSTEM-MEMORY.md) for accounting semantics and limitations.
+
 ## Tests
 
     python -m unittest discover -s tests -v
