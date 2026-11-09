@@ -1,0 +1,10 @@
+{
+  "server":{"host":"127.0.0.1","port":8090},
+  "collector":{"poll_interval_ms":1000,"request_timeout_ms":700,"max_response_bytes":1048576},
+  "history":{"enabled":true,"directory":"./data","retention_days":7},
+  "endpoints":[
+    {"id":"polystrata-or-llama-8080","url":"http://127.0.0.1:8080","enabled":true,"engine":"auto"},
+    {"id":"local-8081","url":"http://127.0.0.1:8081","enabled":false,"engine":"auto"},
+    {"id":"local-8082","url":"http://127.0.0.1:8082","enabled":false,"engine":"auto"}
+  ]
+}

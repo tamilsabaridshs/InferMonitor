@@ -1,23 +1,35 @@
 # InferMonitor
 
-A lightweight local monitoring companion for self-hosted inference servers. It observes up to three endpoints, identifies the process and engine serving each endpoint, collects engine telemetry, and correlates it with shared host hardware telemetry. Initial engines: PolyStrata and llama.cpp.
+Local inference observability companion. Initial MVP target: native Ubuntu/Linux, AMD ROCm, PolyStrata/Strata and llama.cpp.
 
-**Status:** Documentation baseline only; implementation has not started.
+## Quick start
 
-## Documentation
-- [BRD](docs/requirements/BRD.md) | [PRD](docs/requirements/PRD.md) | [Scope](docs/requirements/SCOPE.md)
-- [System architecture](docs/architecture/SYSTEM_ARCHITECTURE.md) | [Component design](docs/architecture/COMPONENT_DESIGN.md) | [Plugin architecture](docs/architecture/PLUGIN_ARCHITECTURE.md)
-- [Process discovery](docs/design/PROCESS_DISCOVERY.md) | [Platform provider contract](docs/design/PLATFORM_PROVIDER_CONTRACT.md) | [GPU provider contract](docs/design/GPU_PROVIDER_CONTRACT.md)
-- [Telemetry model](docs/design/TELEMETRY_MODEL.md) | [Engine adapter contract](docs/design/ENGINE_ADAPTER_CONTRACT.md) | [Data lifecycle](docs/design/DATA_LIFECYCLE.md)
-- [API](docs/api/API_SPECIFICATION.md) | [Configuration](docs/operations/CONFIGURATION.md) | [Security](docs/operations/SECURITY.md)
-- [Test strategy](docs/quality/TEST_STRATEGY.md) | [Traceability](docs/quality/REQUIREMENTS_TRACEABILITY.md) | [Roadmap](docs/management/ROADMAP.md) | [ADRs](docs/decisions/README.md)
+    python3 -m venv .venv
+    . .venv/bin/activate
+    python -m pip install -e .
+    cp config/infermonitor.example.json config/infermonitor.json
+    infermonitor
 
-## Architectural direction
-InferMonitor is a modular monolith with a small Cordis-inspired in-process composition kernel. Engine adapters, OS/platform providers and GPU-vendor providers are independent extension dimensions. Core services depend on capabilities and canonical telemetry contracts, not vendor libraries or OS APIs.
+Open http://127.0.0.1:8090. Stop with Ctrl+C. Python 3.11+; no third-party runtime dependencies. AMD GPU telemetry is optional and uses amd-smi or rocm-smi JSON output when available.
 
-The plugin kernel provides explicit registration, dependency validation, lifecycle, health and cleanup. The application scheduler owns polling cadence; plugins do not create recurring loops. Initial plugins are built-in and allow-listed. No arbitrary dynamic loading, hot reload, distributed plugin host or mandatory framework is planned.
+## Initial capability scope
 
-## Principles
-KISS, DRY and POLA. Reuse existing engine HTTP endpoints, OS facilities and vendor-supported telemetry APIs. One local companion process, a simple browser UI and JSONL history initially. No mandatory database, broker, container platform or heavyweight framework. Linux-first; AMD GPU telemetry is the initial hardware reference. InferMonitor does not manage or modify inference servers, proxy inference requests, collect prompts/completions or upload telemetry.
+- Linux host CPU/RAM telemetry and local TCP listener-to-process lookup through procfs.
+- AMD GPU telemetry through ROCm SMI CLI, best-effort and version-sensitive.
+- PolyStrata JSON /health, /props, /metrics and optional /metrics/prometheus.
+- llama.cpp Prometheus /metrics.
+- Three endpoint slots, session-aware JSONL history and lightweight HTML dashboard.
 
-**Status note:** All documents describe proposed architecture and requirements. No implementation or provider compatibility is implied until contract and integration tests pass for a declared OS/device/driver/runtime combination.
+Copy the example configuration and enable ports 8081/8082 as needed. Auto-detection is preferred; manual engine override is available. Unknown services remain Unknown.
+
+## System inventory and memory breakdown
+
+Phase 2 adds CPU/platform inventory, storage and network summaries, detailed Linux RAM categories, top-process RSS/PSS, swap, and best-effort AMD SMI per-process VRAM/GTT attribution. Values that cannot be read remain unavailable rather than being reported as zero. See [Phase 2 notes](docs/implementation/PHASE2-SYSTEM-MEMORY.md) for accounting semantics and limitations.
+
+## Tests
+
+    python -m unittest discover -s tests -v
+
+## Safety and semantics
+
+Loopback-only API, bounded read-only HTTP GET requests, no prompts/completions, no remote telemetry and no inference control. Raw engine metric names and source provenance are retained. PolyStrata JSON numeric fields are not assigned invented units. GPU field mapping must be validated against the installed ROCm SMI version before relying on it.
